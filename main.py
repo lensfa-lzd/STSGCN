@@ -12,9 +12,9 @@ from torch import optim, nn
 from torch.utils.data import TensorDataset, DataLoader
 
 from model.model import STSGCN
-from script.dataloader import load_adj, load_data, load_data_metro, data_transform
-from script.utility import StandardScaler, calc_mask
-from script.utility import calc_eigenmaps, calc_metric, MAELoss
+from script.dataloader import load_adj, load_data, data_transform, data_transform_metro
+from script.utility import StandardScaler
+from script.utility import calc_metric, MAELoss
 from script.visualize import progress_bar
 
 import os
@@ -28,8 +28,8 @@ def get_parameters():
     parser = argparse.ArgumentParser(description='Waiting for a project name')
     parser.add_argument('--enable_cuda', type=bool, default=True, help='enable CUDA, default as True')
     parser.add_argument('--enable_nni', type=bool, default=False, help='enable nni experiment')
-    parser.add_argument('--dataset', type=str, default='pems-bay', choices=['sh-metro', 'pems-bay', 'hz-metro'])
-    parser.add_argument('--his', type=int, default=60, help='minute')
+    parser.add_argument('--dataset', type=str, default='sh-metro', choices=['sh-metro', 'pems-bay'])
+    parser.add_argument('--his', type=int, default=3*60, help='minute')
     parser.add_argument('--pred', type=int, default=60, help='minute')
     # parser.add_argument('--time_intvl', type=int, default=5, help='means N minutes')
 
@@ -42,7 +42,7 @@ def get_parameters():
     parser.add_argument('--lr', type=float, default=10e-4, help='learning rate')
     # parser.add_argument('--weight_decay_rate', type=float, default=0.0005, help='weight decay (L2 penalty)')
     parser.add_argument('--batch_size', type=int, default=8)
-    parser.add_argument('--epochs', type=int, default=15)
+    parser.add_argument('--epochs', type=int, default=2)
 
     args = parser.parse_args()
 
@@ -91,11 +91,7 @@ def data_prepare(args, device):
     dataset_path = './data'
     dataset_path = os.path.join(dataset_path, args.dataset)
 
-    if 'metro' not in args.dataset:
-        # shape of vel.csv(data) is [num_of_data, num_vertex]
-        num_of_data = pd.read_hdf(os.path.join(dataset_path, 'time_index.h5')).shape[0]
-    else:
-        num_of_data = torch.load(os.path.join(dataset_path, 'time_index_x.pth')).shape[0]
+    num_of_data = torch.load(os.path.join(dataset_path, 'vel.pth')).shape[0]
 
     if 'metro' not in args.dataset:
         train_radio = 7
@@ -125,49 +121,37 @@ def data_prepare(args, device):
     len_test = int(math.floor(num_of_data * test_radio))
     len_train = int(num_of_data - len_val - len_test)
 
+    train_tuple, val_tuple, test_tuple = load_data(args.dataset, len_train, len_val)
+
+    train, val, test = train_tuple[0], val_tuple[0], test_tuple[0]
+    train_te, val_te, test_te = train_tuple[1], val_tuple[1], test_tuple[1]
+    # train, val, test = train.to(device), val.to(device), test.to(device)
+    # train_te, val_te, test_te = train_te.to(device), val_te.to(device), test_te.to(device)
+
+    # print(train.shape)
+    # sys.exit()
+
+    zscore = StandardScaler(train)
+
+    # shape of train/val/test [num_of_data, num_vertex, channel]
+    train = zscore.transform(train)
+    val = zscore.transform(val)
+    test = zscore.transform(test)
+
+    train = torch.cat((train, train_te), dim=-1).float()
+    val = torch.cat((val, val_te), dim=-1).float()
+    test = torch.cat((test, test_te), dim=-1).float()
+
     if 'metro' not in args.dataset:
-        train_tuple, val_tuple, test_tuple = load_data(args.dataset, len_train, len_val)
-
-        train, val, test = train_tuple[0], val_tuple[0], test_tuple[0]
-        train_te, val_te, test_te = train_tuple[1], val_tuple[1], test_tuple[1]
-        # train, val, test = train.to(device), val.to(device), test.to(device)
-        # train_te, val_te, test_te = train_te.to(device), val_te.to(device), test_te.to(device)
-
-        zscore = StandardScaler(train)
-
-        # shape of train/val/test [num_of_data, num_vertex, channel]
-        train = zscore.transform(train)
-        val = zscore.transform(val)
-        test = zscore.transform(test)
-
-        train = torch.cat((train, train_te), dim=-1).float()
-        val = torch.cat((val, val_te), dim=-1).float()
-        test = torch.cat((test, test_te), dim=-1).float()
-
         # size of input/x is [batch_size, channel, n_time, n_vertex]
         # size of y/target [batch_size, channel, n_time, n_vertex]
         x_train, y_train = data_transform(train, args.n_his, args.n_pred)
         x_val, y_val = data_transform(val, args.n_his, args.n_pred)
         x_test, y_test = data_transform(test, args.n_his, args.n_pred)
-
-        # y has no temporal embedding
-        y_train, y_val, y_test = y_train[:, :1, :, :], y_val[:, :1, :, :], y_test[:, :1, :, :]
     else:
-        # size of input/x is [batch_size, channel, n_time, n_vertex]
-        # size of y/target [batch_size, channel, n_time, n_vertex]
-        train_tuple, val_tuple, test_tuple = load_data_metro(args.dataset, len_train, len_val, args.n_pred)
-        x_train, train_te, y_train = train_tuple[0][0], train_tuple[0][1], train_tuple[1][0]
-        x_val, val_te, y_val = val_tuple[0][0], val_tuple[0][1], val_tuple[1][0]
-        x_test, test_te, y_test = test_tuple[0][0], test_tuple[0][1], test_tuple[1][0]
-
-        zscore = StandardScaler(x_train)
-        x_train, y_train = zscore.transform(x_train), zscore.transform(y_train)
-        x_val, y_val = zscore.transform(x_val), zscore.transform(y_val)
-        x_test, y_test = zscore.transform(x_test), zscore.transform(y_test)
-
-        x_train = torch.cat((x_train, train_te), dim=1).float()
-        x_val = torch.cat((x_val, val_te), dim=1).float()
-        x_test = torch.cat((x_test, test_te), dim=1).float()
+        x_train, y_train = data_transform_metro(train, args.n_his, args.n_pred)
+        x_val, y_val = data_transform_metro(val, args.n_his, args.n_pred)
+        x_test, y_test = data_transform_metro(test, args.n_his, args.n_pred)
 
     x_train, y_train = x_train.to(device), y_train.to(device)
     x_val, y_val = x_val.to(device), y_val.to(device)
@@ -210,6 +194,7 @@ def train(loss, args, optimizer, model, train_iter, val_iter, test_iter, zscore,
         l_sum = 0.0  # 'l_sum' is epoch sum loss, 'n' is epoch instance number
         model.train()
         for batch_idx, (x, y) in enumerate(train_iter):
+            y, y_te = y[:, :args.in_channel, :, :], y[:, -2:, :, :]
             y_pred = model(x)
             l = loss(y_pred, y)
             optimizer.zero_grad()
@@ -250,6 +235,7 @@ def evaluation(model, ckpt_name, model_dist, iter, zscore, args, type, saved=Tru
 
     with torch.no_grad():
         for batch_idx, (x, y) in enumerate(iter):
+            y, y_te = y[:, :args.in_channel, :, :], y[:, -2:, :, :]
             y_pred = model(x)
             l = loss(y_pred, y)
             # l_sum += l.item() * y.shape[0]

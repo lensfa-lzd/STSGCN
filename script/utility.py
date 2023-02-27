@@ -16,18 +16,13 @@ class StandardScaler:
         or [batch_size, channel, n_time, n_vertex]
     """
     def __init__(self, fit_data):
-        if len(fit_data.shape) == 3:
+        if len(fit_data.shape) != 3:
             # shape of fit_data [num_of_data, num_vertex, channel]
-            fit_data = rearrange(fit_data, 't v c -> (t v) c')
-            self.mean = torch.mean(fit_data, dim=0)
-            self.std = torch.std(fit_data, dim=0)
-        else:
-            # for metro data [batch_size, channel, n_time, n_vertex]
-            # Select the first time data to reduce repetition
-            fit_data = fit_data[:, :, 0, :]
-            fit_data = rearrange(fit_data, 't c v -> (t v) c')
-            self.mean = torch.mean(fit_data, dim=0)
-            self.std = torch.std(fit_data, dim=0)
+            fit_data = rearrange(fit_data, 'd t v c -> (d t) v c')
+
+        fit_data = rearrange(fit_data, 't v c -> (t v) c')
+        self.mean = torch.mean(fit_data, dim=0)
+        self.std = torch.std(fit_data, dim=0)
 
     def transform(self, x):
         if len(x.shape) == 3:
@@ -37,12 +32,13 @@ class StandardScaler:
             x = (x-self.mean)/self.std
             return rearrange(x, '(t v) c -> t v c', v=v).float()
         else:
-            # for metro data [batch_size, channel, n_time, n_vertex]
-            v = x.shape[-1]
+            # for metro data [day, n_time, n_vertex, channel]
+            v = x.shape[-2]
             batch_size = x.shape[0]
-            x = rearrange(x, 'b c t v -> (b t v) c')
+            x = rearrange(x, 'd t v c -> (d t v) c')
             x = (x - self.mean) / self.std
-            return rearrange(x, '(b t v) c -> b c t v', b=batch_size, v=v).float()
+
+            return rearrange(x, '(d t v) c -> d t v c', d=batch_size, v=v).float()
 
     def inverse_transform(self, x):
         if len(x.shape) == 3:
