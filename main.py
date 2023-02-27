@@ -33,8 +33,8 @@ def get_parameters():
     parser.add_argument('--pred', type=int, default=60, help='minute')
     # parser.add_argument('--time_intvl', type=int, default=5, help='means N minutes')
 
-    parser.add_argument('--n_layer', type=int, default=1)
-    parser.add_argument('--gcn_num', type=int, default=2)
+    parser.add_argument('--n_layer', type=int, default=4)
+    parser.add_argument('--gcn_num', type=int, default=3)
     parser.add_argument('--n_channel', type=int, default=64)
 
     parser.add_argument('--activation', type=str, default='glu')
@@ -205,7 +205,7 @@ def train(loss, args, optimizer, model, train_iter, val_iter, test_iter, zscore,
 
             rmse, mae, mape = calc_metric(y, y_pred, zscore)
 
-            if batch_idx % 1 == 0:
+            if batch_idx % 20 == 0:
                 progress_bar(batch_idx, len(train_iter), 'Train loss: %.3f | mae, mape, rmse: %.3f, %.1f%%, %.3f'
                              % (l_sum / (batch_idx + 1), mae, mape, rmse))
 

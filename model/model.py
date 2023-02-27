@@ -1,3 +1,5 @@
+import sys
+
 import torch
 import torch.nn as nn
 
@@ -63,9 +65,14 @@ class STSGCL(nn.Module):
         self.n_time = n_time
         self.layer = layer
 
+        # print(layer)
+        layer_time = n_time - 2*(layer-1)
+
         # temporal_embedding, [batch_size, channel, n_time, 1]
         # spatial_embedding, [batch_size, channel, 1, n_vertex]
-        self.temporal_emb = nn.Parameter(torch.empty((1, n_channel, n_time, 1), requires_grad=True, device=device))
+
+        # self.temporal_emb = nn.Parameter(torch.empty((1, n_channel, n_time, 1), requires_grad=True, device=device))
+        self.temporal_emb = nn.Parameter(torch.empty((1, n_channel, layer_time, 1), requires_grad=True, device=device))
         self.spatial_emb = nn.Parameter(torch.empty((1, n_channel, 1, n_vertex), requires_grad=True, device=device))
         torch.nn.init.xavier_normal_(self.temporal_emb, gain=0.0003)
         torch.nn.init.xavier_normal_(self.spatial_emb, gain=0.0003)
@@ -83,6 +90,9 @@ class STSGCL(nn.Module):
         :param x: [batch_size, channel, n_time, n_vertex]
         :return: [batch_size, channel, n_time-2, n_vertex]
         """
+        # print(x.shape, self.temporal_emb.shape, self.spatial_emb.shape)
+        # sys.exit()
+
         x = x + self.temporal_emb + self.spatial_emb
 
         need_concat = []
