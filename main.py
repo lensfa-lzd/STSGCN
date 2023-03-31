@@ -5,10 +5,8 @@ import os
 import sys
 
 import nni
-import numpy as np
-import pandas as pd
 import torch
-from torch import optim, nn
+from torch import optim
 from torch.utils.data import TensorDataset, DataLoader
 
 from model.model import STSGCN
@@ -16,8 +14,6 @@ from script.dataloader import load_adj, load_data, data_transform, data_transfor
 from script.utility import StandardScaler
 from script.utility import calc_metric, MAELoss
 from script.visualize import progress_bar
-
-import os
 
 cpu_num = 8  # 8 thread for 1 GPU
 os.environ["OMP_NUM_THREADS"] = str(cpu_num)  # noqa
@@ -36,6 +32,9 @@ def get_parameters():
     parser.add_argument('--n_layer', type=int, default=4)
     parser.add_argument('--gcn_num', type=int, default=3)
     parser.add_argument('--n_channel', type=int, default=64)
+
+    parser.add_argument('--k_neighbor', type=int, default=8,
+                        help='top k neighbor for node mask, 9 for 100%, 0 for top 10%')
 
     parser.add_argument('--activation', type=str, default='glu')
 
@@ -84,7 +83,8 @@ def get_parameters():
 
 
 def data_prepare(args, device):
-    adj, n_vertex = load_adj(args.dataset)
+    # TODO 已经尝试将k_neighbor融入
+    adj, n_vertex = load_adj(args.dataset, args.k_neighbor)
     args.adj = torch.from_numpy(adj).float().to(device)
     args.n_vertex = n_vertex
 

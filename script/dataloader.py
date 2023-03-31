@@ -10,7 +10,7 @@ import torch.nn.functional as F
 from einops import repeat
 
 
-def load_adj(dataset_name):
+def load_adj(dataset_name, k):
     dataset_path = './data'
     dataset_path = os.path.join(dataset_path, dataset_name)
     adj = torch.load(os.path.join(dataset_path, 'adj.pth'))
@@ -32,7 +32,10 @@ def load_adj(dataset_name):
     # So removing the self-connection here makes it equal to the adjacency matrix (W) in the paper
     adj = adj - id
 
-    adj[adj > 0] = 1  # 0/1 matrix, symmetric
+    k_neighbor = torch.load(os.path.join(dataset_path, 'k_neighbor.pth'))
+
+    # adj[adj > 0] = 1  # 0/1 matrix, symmetric
+    adj[k_neighbor <= k] = 1  # 0/1 matrix, symmetric
 
     # adj is weighted in dataset above
     return adj, n_vertex

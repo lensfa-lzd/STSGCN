@@ -92,45 +92,9 @@ def calc_eigenmaps(adj, k, padded_vertex):
 
 
 def calc_mask(args, device):
-    """
-    def CalcCausalMask(n_time):
-        mask = torch.triu(torch.ones(n_time, n_time), diagonal=1).float()
-        return mask*(-10e5)
-
-    def CalcCausalMask(self):
-        n_time = self.norm_shape[1]
-        mask_size = n_time*self.windows_size
-        mask = torch.zeros(mask_size, mask_size).float()
-        for i in range(mask_size):
-            moment = i // self.windows_size + 1
-            mask_boundary = moment * self.windows_size
-            for j in range(mask_size):
-                if j > mask_boundary:
-                    mask[i, j] = 1
-
-    return mask * (-10e5)
-    """
-    n_time = args.n_his
-    k_window = args.k_window
     n_vertex = args.n_vertex
     dataset_name = args.dataset
     k = args.k_neighbor
-
-    temporal_mask = torch.ones(n_time, n_time).float().to(device)
-    temporal_mask = torch.triu(temporal_mask, diagonal=1 + k_window)
-    temporal_mask = -10e5 * temporal_mask
-
-    window_size = args.window_size
-    mask_size = n_time * window_size
-    spatial_mask = torch.zeros(mask_size, mask_size).float().to(device)
-    for i in range(mask_size):
-        moment = i // window_size + 1 + k_window
-        mask_boundary = moment * window_size
-        for j in range(mask_size):
-            if j > mask_boundary:
-                spatial_mask[i, j] = 1
-
-    spatial_mask = -10e5 * spatial_mask
 
     dataset_path = './data'
     dataset_path = os.path.join(dataset_path, dataset_name)
@@ -139,7 +103,7 @@ def calc_mask(args, device):
     neighbor_mask[k_neighbor > k] = 1
 
     neighbor_mask = -10e5 * neighbor_mask
-    return temporal_mask, spatial_mask, neighbor_mask
+    return neighbor_mask
 
 
 def ShiftPad(x, pad_size):
@@ -217,13 +181,16 @@ class Metrics(object):
 
     def mse(self):
         mse = torch.square(self.target - self.output)
+        mse[self.mask] = 0
         return torch.mean(mse)
 
     def rmse(self):
         return torch.sqrt(self.mse())
 
     def mae(self):
-        return torch.mean(torch.absolute(self.target - self.output))
+        mae = torch.absolute(self.target - self.output)
+        mae[self.mask] = 0
+        return torch.mean(mae)
 
     def mape(self):
         mape = torch.absolute((self.target - self.output)/self.target)
